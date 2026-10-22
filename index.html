@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Happy Birthday, Jamie!</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#17132b">
+<meta property="og:title" content="Happy Birthday, Jamie! 🎂">
+<meta property="og:description" content="Someone baked you a cake. Come light the candles.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#17132b;--ink:#fff4e0;--accent:#ffd23f;--pink:#ff8fb8}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);overflow:hidden;overscroll-behavior:none}
+body{position:fixed;inset:0;font-family:'Press Start 2P',ui-monospace,Menlo,monospace;color:var(--ink);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+canvas{position:absolute;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none}
+#hint{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 34px);text-align:center;font-size:12px;line-height:1.9;padding:0 16px;pointer-events:none;text-shadow:2px 2px 0 #000;transition:opacity .4s}
+#hint small{display:block;font-size:9px;opacity:.75;margin-top:8px;line-height:1.9}
+#hint .pink{display:block;color:var(--pink);font-size:9px;margin-bottom:12px;letter-spacing:1px}
+#wish{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 28px);transform:translateX(-50%);width:min(92vw,420px);display:none;flex-direction:column;gap:14px;text-align:center}
+#wish.show{display:flex}
+#wish p{font-size:12px;line-height:1.9;text-shadow:2px 2px 0 #000}
+.dim{display:block;font-size:9px;opacity:.65;margin-top:6px}
+#wish input{font:16px/1.4 ui-monospace,Menlo,monospace;padding:12px;border:3px solid var(--ink);background:#0d0a1c;color:var(--ink);border-radius:0;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none}
+.btns{display:flex;gap:10px}
+button{flex:1;font-family:inherit;font-size:10px;padding:12px 8px;border:3px solid var(--ink);background:var(--accent);color:#17132b;cursor:pointer;box-shadow:3px 3px 0 #000;border-radius:0}
+button.ghost{background:transparent;color:var(--ink)}
+button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000}
+#card{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 28px);transform:translate(-50%,-12px);width:min(92vw,480px);text-align:center;opacity:0;pointer-events:none;transition:opacity .9s,transform .9s}
+#card.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#card h1{font-size:clamp(16px,5vw,26px);line-height:1.6;color:var(--accent);text-shadow:3px 3px 0 #c0392b}
+#card p{font-size:10px;line-height:2.1;margin-top:14px;text-shadow:2px 2px 0 #000}
+#card .from{color:var(--pink)}
+#again{margin-top:18px;padding:10px 14px}
+#mute{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:10px;width:36px;height:36px;padding:0;flex:none;font-size:13px;background:transparent;color:var(--ink);border:2px solid rgba(255,244,224,.5);box-shadow:none;z-index:5}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint"></div>
+<form id="wish" autocomplete="off">
+  <p>Make a wish.<span class="dim">It burns right after. Nobody will ever see it.</span></p>
+  <input id="wishText" maxlength="60" placeholder="I wish..." enterkeyhint="done">
+  <div class="btns"><button type="button" class="ghost" id="skip">Skip</button><button type="submit">Burn it</button></div>
+</form>
+<div id="card"><h1 id="title"></h1><p id="msg"></p><p id="from" class="from"></p><button id="again" type="button">Again</button></div>
+<button id="mute" type="button" aria-label="Toggle sound">♪</button>
+<script>
+(()=>{
+/* ====== EDIT HERE ====== */
+const NAME='Jamie';
+const MESSAGE='Another lap around the sun! Wishing you a year full of good people, good food and plenty of reasons to laugh.';
+const FROM=''; // e.g. 'from Nika' — leave empty to hide
+const N_CANDLES=5;
+/* ======================= */
+
+const $=id=>document.getElementById(id);
+const cv=$('c'),ctx=cv.getContext('2d');
+const hint=$('hint'),wishForm=$('wish'),wishInput=$('wishText'),card=$('card');
+$('title').textContent=`Happy Birthday, ${NAME}!`;
+$('msg').textContent=MESSAGE;
+if(FROM)$('from').textContent=FROM;else $('from').remove();
+document.title=`Happy Birthday, ${NAME}!`;
+const FINE=matchMedia('(pointer:fine)').matches;
+const ACT=FINE?'drag':'swipe';
+try{document.fonts&&document.fonts.load("8px 'Press Start 2P'")}catch(_){}
+
+const CANDLE_COLS=[['#7fd1ff','#4fa3d6'],['#ff9ec7','#d9709d'],['#ffe27a','#d6b44a'],['#9dffb0','#62c97a'],['#c9a0ff','#9a6fd6']];
+const DRIP=[0,1,2,1,0,0,3,2,0,1,0,0,2,4,2,0,0,1,0,3,1,0,0,2];
+const CONF=['#ffd23f','#ff8fb8','#7fd1ff','#9dffb0','#c9a0ff','#ff7a1a','#fff4e0'];
+
+let S=3,W=0,H=0,cx=0,tableY=0,cakeTop=0,tierB={},tierT={};
+const box={x:0,y:0,w:30,h:12};
+let candles=[],stars=[],sprinkles=[],parts=[],confetti=[];
+let stage='intro',stageT=0,hardHint=false,fwTimer=0,lastWhoosh=0,lastScratch=0;
+const match={state:'box',x:0,y:0,lit:false,burnt:false,alpha:1,lean:0,vx:0,strike:0,held:false,lastPX:0};
+const pointers=new Map();
+
+/* ---------- audio ---------- */
+let AC=null,master=null,NB=null,muted=false,songNodes=[];
+function ensureAudio(){
+  if(!AC){
+    try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(_){}
+    const A=window.AudioContext||window.webkitAudioContext; if(!A)return;
+    AC=new A(); master=AC.createGain(); master.gain.value=muted?0:0.6; master.connect(AC.destination);
+  }
+  if(AC.state==='suspended')AC.resume();
+}
+function nbuf(){if(!NB){NB=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);const d=NB.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}return NB}
+function noise(dur,o={}){
+  if(!AC)return;
+  const {type='bandpass',freq=1000,q=1,gain=0.2,attack=0.005,delay=0}=o;
+  const t=AC.currentTime+delay,s=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();
+  s.buffer=nbuf(); f.type=type; f.frequency.value=freq; f.Q.value=q;
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(gain,t+attack); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+dur+0.05);
+}
+function tone(fr,dur,type='square',gain=0.06,slide=1){
+  if(!AC)return;
+  const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();
+  o.type=type; o.frequency.setValueAtTime(fr,t); if(slide!==1)o.frequency.exponentialRampToValueAtTime(fr*slide,t+dur);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(gain,t+0.008); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.02);
+}
+const NF={G4:392,A4:440,B4:493.88,C5:523.25,D5:587.33,E5:659.25,F5:698.46,G5:783.99};
+const SONG=[['G4',.75],['G4',.25],['A4',1],['G4',1],['C5',1],['B4',2],
+ ['G4',.75],['G4',.25],['A4',1],['G4',1],['D5',1],['C5',2],
+ ['G4',.75],['G4',.25],['G5',1],['E5',1],['C5',1],['B4',1],['A4',2],
+ ['F5',.75],['F5',.25],['E5',1],['C5',1],['D5',1],['C5',3]];
+function playSong(){
+  if(!AC)return; stopSong();
+  let t=AC.currentTime+0.2; const beat=0.34;
+  for(const [n,d] of SONG){
+    const dur=d*beat,o=AC.createOscillator(),g=AC.createGain();
+    o.type='square'; o.frequency.value=NF[n];
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.07,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.03,t+dur*0.6); g.gain.exponentialRampToValueAtTime(0.0001,t+dur*0.95);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur); songNodes.push(o); t+=dur;
+  }
+}
+function stopSong(){songNodes.forEach(o=>{try{o.stop()}catch(_){}});songNodes=[]}
+$('mute').onclick=()=>{ensureAudio();muted=!muted;if(master)master.gain.value=muted?0:0.6;$('mute').textContent=muted?'×':'♪'};
+
+/* ---------- layout ---------- */
+function layout(){
+  S=Math.max(2,Math.floor(Math.min(innerWidth/110,innerHeight/190)));
+  W=Math.ceil(innerWidth/S); H=Math.ceil(innerHeight/S);
+  cv.width=W; cv.height=H; cv.style.width=W*S+'px'; cv.style.height=H*S+'px';
+  cx=W>>1; tableY=Math.round(H*0.68);
+  tierB={x:cx-32,w:64,h:18}; tierB.y=tableY-2-tierB.h;
+  tierT={x:cx-23,w:46,h:16}; tierT.y=tierB.y-tierT.h;
+  cakeTop=tierT.y;
+  box.x=cx-15; box.y=tableY+Math.max(8,Math.min(22,Math.floor((H-tableY)/2)-6));
+  const old=candles; candles=[];
+  for(let i=0;i<N_CANDLES;i++){
+    const o=old[i]||{lit:false,hp:1,lean:0,push:0,smokeUntil:0};
+    Object.assign(o,{x:cx+Math.round((i-(N_CANDLES-1)/2)*8),top:cakeTop-10,col:CANDLE_COLS[i%CANDLE_COLS.length]});
+    o.fy=o.top-2; candles.push(o);
+  }
+  stars=[]; const n=Math.round(W*H/350);
+  for(let i=0;i<n;i++)stars.push({x:Math.random()*W|0,y:Math.random()*Math.max(10,cakeTop-20)|0,p:Math.random()*6.28,s:0.5+Math.random()});
+  sprinkles=[]; const b=tierB;
+  for(let i=0;i<24;i++)sprinkles.push({x:b.x+3+Math.random()*(b.w-8)|0,y:Math.random()<.5?b.y+5+(Math.random()*4|0):b.y+14+(Math.random()*2|0),c:CONF[i%6]});
+  if(match.state==='box')placeMatchOnBox();
+}
+function placeMatchOnBox(){match.x=box.x+box.w-4;match.y=box.y-2}
+
+/* ---------- drawing ---------- */
+function R(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function glow(x,y,r,a){const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,`rgba(255,170,70,${a})`);g.addColorStop(1,'rgba(255,170,70,0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
+function drawFlame(x,y,h,lean){
+  for(let i=0;i<h;i++){
+    const f=h>1?i/(h-1):0,sx=x+Math.round(lean*f*f),yy=y-i;
+    if(f<0.45){R(sx-1,yy,3,1,'#ff7a1a');R(sx,yy,1,1,i===0?'#8fb4ff':i===1?'#fff6c2':'#ffd23f')}
+    else if(f<0.8){const l=lean>=0?sx:sx-1;R(l,yy,2,1,'#ff9a2a');R(lean>=0?l:l+1,yy,1,1,'#ffd23f')}
+    else R(sx,yy,1,1,'#ff6a1a');
+  }
+}
+function drawTable(){
+  R(0,tableY,W,H-tableY,'#4a2f2a'); R(0,tableY,W,1,'#7a5040');
+  for(let y=tableY+6;y<H;y+=7)for(let x=(y*7)%11;x<W;x+=19)R(x,y,9,1,'#3f2722');
+}
+function drawBox(now){
+  const {x,y,w,h}=box;
+  R(x,y,w,h,'#2a6fbb'); R(x+w-1,y,1,h,'#1d4f88');
+  const pulse=stage==='intro'&&Math.sin(now/220)>0;
+  R(x,y+h-4,w,4,pulse?'#8a5c3c':'#5a3a28');
+  for(let i=1;i<w;i+=2)R(x+i,y+h-3+(i%4?0:1),1,1,'#7a5238');
+  R(x+3,y+2,w-6,4,'#ffd23f'); R(x+5,y+3,w-10,2,'#c0392b');
+}
+function drawCake(){
+  R(cx-40,tableY-2,80,2,'#ece8f4'); R(cx-38,tableY,76,1,'#9d97b3');
+  const b=tierB;
+  R(b.x,b.y,b.w,b.h,'#e889a8'); R(b.x,b.y,2,b.h,'#f3a5c0');
+  R(b.x+b.w-4,b.y,4,b.h,'#c96d8e'); R(b.x,b.y+b.h-2,b.w,2,'#c96d8e');
+  R(b.x,b.y+10,b.w,2,'#fff4f8'); R(b.x+b.w-4,b.y+10,4,2,'#e6d6e0');
+  for(let x=b.x+3;x<b.x+b.w-3;x+=6)R(x,b.y+13,2,1,'#fff4f8');
+  for(const s of sprinkles)R(s.x,s.y,1,1,s.c);
+  R(b.x,b.y,b.w,3,'#fff4f8');
+  for(let i=0;i<b.w;i++){const d=DRIP[i%DRIP.length];if(d)R(b.x+i,b.y+3,1,d,'#fff4f8')}
+  const t=tierT;
+  R(t.x,t.y,t.w,t.h,'#fbe4c8'); R(t.x,t.y,2,t.h,'#fff1de');
+  R(t.x+t.w-3,t.y,3,t.h,'#e4c29c'); R(t.x,t.y+t.h-1,t.w,1,'#e4c29c');
+  for(let x=t.x+5;x<t.x+t.w-4;x+=9){R(x,t.y+9,3,2,'#e0405a');R(x+1,t.y+11,1,1,'#e0405a');R(x,t.y+9,1,1,'#ff7a8a')}
+  R(t.x,t.y,t.w,3,'#ff9ec7');
+  for(let i=0;i<t.w;i++){const d=DRIP[(i+5)%DRIP.length];if(d)R(t.x+i,t.y+3,1,Math.min(d,3),'#ff9ec7')}
+}
+function drawCandles(now){
+  for(const c of candles){
+    for(let r=0;r<=10;r++)for(let k=0;k<3;k++){
+      const st=(r+k)%4===0;
+      R(c.x-1+k,c.top+r,1,1,st?(k===2?'#e6d6e0':'#fff4f8'):(k===2?c.col[1]:c.col[0]));
+    }
+    R(c.x,c.top-2,1,2,'#2a1d14');
+    if(!c.lit&&now<c.smokeUntil-900)R(c.x,c.top-2,1,1,'#ff5a1a');
+  }
+}
+function drawMatch(){
+  if(match.alpha<=0)return;
+  ctx.globalAlpha=Math.max(0,match.alpha);
+  const hx=Math.round(match.x),hy=Math.round(match.y);
+  if(match.state==='box'){
+    R(hx-14,hy,13,1,'#e2b07a'); R(hx-14,hy+1,13,1,'#b8854f');
+    R(hx-1,hy-1,3,3,'#d23c2c'); R(hx-1,hy-1,1,1,'#ff6b5a');
+  }else{
+    for(let i=1;i<=11;i++){R(hx+i,hy+i,1,1,'#e2b07a');R(hx+i+1,hy+i,1,1,'#b8854f')}
+    R(hx-1,hy-1,3,3,match.burnt?'#2a1a14':'#d23c2c');
+    if(!match.burnt)R(hx-1,hy-1,1,1,'#ff6b5a');
+    if(match.lit)drawFlame(hx,hy-2,6-(Math.random()<.2?1:0),Math.max(-3,Math.min(3,match.lean)));
+  }
+  ctx.globalAlpha=1;
+}
+function drawParticles(now){
+  for(const p of parts){
+    let col=p.c,a=1;
+    if(p.k==='txt'){
+      const age=now-p.burnAt;
+      if(age<0)col='#fff4e0';
+      else if(age<350)col=age<100?'#ffe680':age<220?'#ff9a2a':'#e0401a';
+      else if(age<800){col='#ff5a1a';a=1-(age-350)/1400}
+      else{col='#8a8299';a=Math.max(0,1-(age-350)/1850)}
+    }else a=Math.max(0,p.life/p.max)*(p.k==='smoke'?0.7:1);
+    ctx.globalAlpha=a; R(p.x,p.y,1,1,col);
+  }
+  ctx.globalAlpha=1;
+  for(const c of confetti){if(((now/150+c.ph)|0)%2)R(c.x,c.y,2,1,c.c);else R(c.x,c.y,1,2,c.c)}
+}
+function draw(now){
+  R(0,0,W,H,'#17132b');
+  for(const s of stars){const v=Math.sin(now*0.0015*s.s+s.p);if(v>-0.2)R(s.x,s.y,1,1,v>0.7?'#fff4e0':'#5d5482')}
+  const litN=candles.filter(c=>c.lit).length+(match.lit?0.5:0);
+  ctx.globalCompositeOperation='lighter';
+  if(litN)glow(cx,cakeTop-6,90,0.035*litN);
+  ctx.globalCompositeOperation='source-over';
+  drawTable(); drawBox(now); drawCake(); drawCandles(now);
+  ctx.globalCompositeOperation='lighter';
+  for(const c of candles)if(c.lit)glow(c.x,c.fy-3,16,0.22*(0.6+0.4*c.hp));
+  if(match.lit)glow(match.x,match.y-4,14,0.2);
+  ctx.globalCompositeOperation='source-over';
+  for(const c of candles)if(c.lit){
+    const h=Math.max(3,Math.round(4+3*c.hp)-(Math.random()<.12?1:0));
+    drawFlame(c.x,c.fy,h,Math.max(-3,Math.min(3,c.lean)));
+  }
+  drawMatch(); drawParticles(now);
+}
+
+/* ---------- particles ---------- */
+function sparks(x,y,n){for(let i=0;i<n;i++)parts.push({k:'spark',x,y,vx:(Math.random()-.5)*0.12,vy:-Math.random()*0.1,g:0.0003,life:300+Math.random()*400,max:700,c:Math.random()<.5?'#ffd23f':'#ff9a2a'})}
+function smoke(x,y){parts.push({k:'smoke',x:x+(Math.random()-.5),y,vx:(Math.random()-.5)*0.004,vy:-0.012-Math.random()*0.012,life:1200+Math.random()*600,max:1800,c:Math.random()<.5?'#bdb6cc':'#8a8299',ph:Math.random()*6})}
+function addConfetti(n){for(let i=0;i<n;i++)confetti.push({x:Math.random()*W,y:-2-Math.random()*30,vy:0.015+Math.random()*0.03,ph:Math.random()*6,c:CONF[Math.random()*CONF.length|0]})}
+function firework(){
+  const x=10+Math.random()*(W-20),y=8+Math.random()*Math.max(10,cakeTop-40);
+  const c1=CONF[Math.random()*CONF.length|0],c2=CONF[Math.random()*CONF.length|0],n=26;
+  for(let i=0;i<n;i++){const a=i/n*6.283+Math.random()*.2,sp=0.03+Math.random()*0.04;
+    parts.push({k:'fw',x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,g:0.00004,life:900+Math.random()*500,max:1400,c:Math.random()<.5?c1:c2})}
+  noise(0.6,{type:'lowpass',freq:400,gain:0.2});
+  for(let i=0;i<5;i++)noise(0.04,{type:'highpass',freq:3000,gain:0.05,delay:0.3+Math.random()*0.5});
+}
+function wrap(o,t,maxW){
+  const words=t.split(/\s+/),lines=[];let cur='';
+  for(const w of words){const n=cur?cur+' '+w:w;if(o.measureText(n).width>maxW&&cur){lines.push(cur);cur=w}else cur=n}
+  if(cur)lines.push(cur); return lines.slice(0,6);
+}
+function burnText(t){
+  const lh=11,font="8px 'Press Start 2P', ui-monospace, monospace";
+  const oc=document.createElement('canvas');let o=oc.getContext('2d');o.font=font;
+  const lines=wrap(o,t,W-10);
+  oc.width=W; oc.height=lines.length*lh+2;
+  o=oc.getContext('2d'); o.font=font; o.fillStyle='#fff'; o.textBaseline='top';
+  lines.forEach((l,i)=>o.fillText(l,Math.round((W-o.measureText(l).width)/2),1+i*lh));
+  const d=o.getImageData(0,0,oc.width,oc.height).data;
+  const y0=Math.max(4,cakeTop-26-oc.height),now=performance.now();
+  for(let y=0;y<oc.height;y++)for(let x=0;x<oc.width;x++)
+    if(d[(y*oc.width+x)*4+3]>110)parts.push({k:'txt',x,y:y0+y,burnAt:now+1000+(x/W)*1400+Math.random()*250,vx:(Math.random()-.5)*0.006,vy:-0.01-Math.random()*0.02,life:1});
+  for(let i=0;i<16;i++)noise(0.05,{type:'highpass',freq:2000,gain:0.04+Math.random()*0.06,delay:1+i*0.12+Math.random()*0.05});
+  noise(0.9,{type:'lowpass',freq:500,gain:0.08,attack:0.2,delay:1});
+}
+
+/* ---------- stages ---------- */
+function setStage(s,h){stage=s;stageT=performance.now();if(h!==undefined){hint.innerHTML=h;hint.style.opacity=h?1:0}}
+function toIntro(){hardHint=false;setStage('intro',`<span class="pink">for ${NAME}</span>Strike the match<small>${ACT} across the matchbox ↓<br>sound on ♪</small>`)}
+function ignite(){
+  match.lit=true; sparks(match.x,match.y,16);
+  noise(0.12,{freq:3500,q:0.8,gain:0.35}); noise(0.35,{type:'lowpass',freq:900,gain:0.22,attack:0.03,delay:0.05});
+  setStage('light',`Light the candles<small>${FINE?'move':'drag'} the flame to each wick</small>`);
+}
+function tryLight(){
+  for(const c of candles){
+    if(!c.lit&&Math.abs(match.x-c.x)<=3&&match.y>=c.fy-8&&match.y<=c.fy+4){
+      c.lit=true; c.hp=1; sparks(c.x,c.fy,6);
+      tone(520+candles.filter(k=>k.lit).length*110,0.14,'square',0.06,1.5);
+    }
+  }
+  if(stage==='light'&&candles.every(c=>c.lit))allLit();
+}
+function allLit(){
+  setStage('lit','');
+  setTimeout(()=>{match.lit=false;match.burnt=true;for(let i=0;i<8;i++)smoke(match.x,match.y-2);noise(0.18,{type:'lowpass',freq:700,gain:0.12});match.state='fall'},800);
+  setTimeout(()=>{wishForm.classList.add('show');setStage('wish')},1600);
+}
+function toBlow(){setStage('blow',`Now blow them out!<small>${ACT} up, fast ↑<br>${FINE?'':'or cover every flame with a finger'}</small>`)}
+wishForm.addEventListener('submit',e=>{
+  e.preventDefault(); ensureAudio();
+  const t=wishInput.value.trim(); wishInput.blur(); wishInput.value=''; wishForm.classList.remove('show');
+  if(t){setStage('burning');setTimeout(()=>burnText(t),250)}else toBlow();
+});
+$('skip').onclick=()=>{wishInput.blur();wishInput.value='';wishForm.classList.remove('show');toBlow()};
+function blowOut(c){
+  if(!c.lit)return;
+  c.lit=false; c.hp=0; c.smokeUntil=performance.now()+1800;
+  noise(0.18,{type:'lowpass',freq:700,gain:0.15});
+  if(stage==='blow'&&candles.every(k=>!k.lit)){setStage('done','');setTimeout(party,1000)}
+}
+function gust(lx,vy){
+  const s=Math.min(1.6,-vy/1.6),now=performance.now();
+  if(now-lastWhoosh>110){lastWhoosh=now;noise(0.25,{type:'lowpass',freq:500+s*700,gain:0.06+0.12*Math.min(1,s),attack:0.02})}
+  for(const c of candles){
+    if(!c.lit)continue;
+    const k=s*Math.max(0,1-Math.abs(c.x-lx)/40);
+    c.push=Math.max(-4,Math.min(4,c.push+(c.x>=lx?1:-1)*k*2));
+    if(k>0.45){c.hp-=(k-0.45)*0.55;if(c.hp<=0)blowOut(c)}
+  }
+}
+function checkCover(){
+  const lit=candles.filter(c=>c.lit);if(!lit.length)return;
+  const ps=[...pointers.values()];
+  if(lit.every(c=>ps.some(p=>Math.abs(p.x-c.x)<=5&&p.y>=c.fy-14&&p.y<=cakeTop+6)))lit.forEach(blowOut);
+}
+function party(){setStage('party','');card.classList.add('show');playSong();addConfetti(90);fwTimer=0}
+$('again').onclick=()=>{
+  card.classList.remove('show'); stopSong();
+  candles.forEach(c=>{c.lit=false;c.hp=1;c.smokeUntil=0;c.push=0});
+  Object.assign(match,{state:'box',lit:false,burnt:false,alpha:1,held:false,strike:0});
+  placeMatchOnBox(); parts=[]; confetti=[]; toIntro();
+};
+
+/* ---------- input ---------- */
+function L(e){return{x:e.clientX/S,y:e.clientY/S}}
+function moveMatch(e,p){const o=e.pointerType==='mouse'?0:9,nx=p.x-o,ny=p.y-o;match.vx=nx-match.x;match.x=nx;match.y=ny}
+cv.addEventListener('pointerdown',e=>{
+  ensureAudio(); const p=L(e);
+  pointers.set(e.pointerId,{x:p.x,y:p.y,cx:e.clientX,cy:e.clientY,t:performance.now()});
+  try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  if(stage==='intro'){if(p.y>tableY-8){match.state='hand';match.held=true;match.strike=0;match.lastPX=p.x;moveMatch(e,p)}}
+  else if(stage==='light'){match.held=true;moveMatch(e,p);tryLight()}
+  else if(stage==='blow')checkCover();
+});
+cv.addEventListener('pointermove',e=>{
+  const p=L(e),now=performance.now(),q=pointers.get(e.pointerId);let vy=0;
+  if(q){const dt=Math.max(1,now-q.t);vy=(e.clientY-q.cy)/dt;Object.assign(q,{x:p.x,y:p.y,cx:e.clientX,cy:e.clientY,t:now})}
+  if(stage==='intro'&&match.held&&q){
+    moveMatch(e,p);
+    if(p.x>box.x-10&&p.x<box.x+box.w+10&&p.y>box.y-14&&p.y<box.y+box.h+14){
+      const d=Math.abs(p.x-match.lastPX); match.strike+=d;
+      if(d>0.5&&now-lastScratch>90){lastScratch=now;noise(0.06,{freq:2500+Math.random()*1500,q:1.5,gain:0.12});if(Math.random()<.5)sparks(match.x,match.y,1)}
+      if(match.strike>34)ignite();
+    }
+    match.lastPX=p.x;
+  }else if(stage==='light'&&(q||e.pointerType==='mouse')){moveMatch(e,p);tryLight()}
+  else if(stage==='blow'&&q){if(vy<-0.4)gust(p.x,vy);checkCover()}
+});
+const up=e=>{
+  pointers.delete(e.pointerId);
+  if(stage==='intro'&&!match.lit){match.state='box';match.held=false;placeMatchOnBox()}else match.held=false;
+};
+cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
+addEventListener('resize',layout);
+
+/* ---------- loop ---------- */
+let last=performance.now();
+function update(now,dt){
+  for(const c of candles){
+    c.push*=Math.pow(0.9,dt/16);
+    c.lean+=(c.push+(Math.random()-.5)*1.4-c.lean)*0.3;
+    if(c.lit&&c.hp<1)c.hp=Math.min(1,c.hp+0.00025*dt);
+    if(now<c.smokeUntil&&Math.random()<0.35)smoke(c.x,c.top-3);
+  }
+  match.lean+=(Math.max(-3,Math.min(3,-match.vx*1.5))+(Math.random()-.5)*1.2-match.lean)*0.3; match.vx*=0.85;
+  if(match.state==='fall'){match.alpha-=dt/700;match.y+=dt*0.02}
+  for(const p of parts){
+    if(p.k==='txt'){const a=now-p.burnAt;if(a>350){p.x+=p.vx*dt;p.y+=p.vy*dt}if(a>2200)p.life=0;continue}
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=(p.g||0)*dt;
+    if(p.k==='smoke')p.x+=Math.sin(now/180+p.ph)*0.008*dt;
+    p.life-=dt;
+  }
+  parts=parts.filter(p=>p.life>0);
+  for(const c of confetti){c.y+=c.vy*dt;c.x+=Math.sin(now/300+c.ph)*0.01*dt}
+  confetti=confetti.filter(c=>c.y<H+2);
+  if(stage==='burning'&&now-stageT>1500&&!parts.some(p=>p.k==='txt'))toBlow();
+  if(stage==='blow'&&!hardHint&&now-stageT>18000){hardHint=true;hint.innerHTML=`Harder! ↑↑<small>quick ${FINE?'drags':'flicks'} from the bottom of the screen</small>`}
+  if(stage==='party'&&now>fwTimer){firework();if(Math.random()<.5)addConfetti(8);fwTimer=now+500+Math.random()*900}
+}
+function frame(now){const dt=Math.min(50,now-last);last=now;update(now,dt);draw(now);requestAnimationFrame(frame)}
+layout(); toIntro(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
